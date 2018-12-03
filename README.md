@@ -9,7 +9,7 @@
 
 ---
 
-The Exception Notification gem provides a set of [notifiers](#notifiers) for sending notifications when errors occur in a Rack/Rails application. The built-in notifiers can deliver notifications by [email](#email-notifier), [Campfire](#campfire-notifier), [HipChat](#hipchat-notifier), [Slack](#slack-notifier), [Mattermost](#mattermost-notifier), [IRC](#irc-notifier) or via custom [WebHooks](#webhook-notifier).
+The Exception Notification gem provides a set of [notifiers](#notifiers) for sending notifications when errors occur in a Rack/Rails application. The built-in notifiers can deliver notifications by [email](#email-notifier), [Campfire](#campfire-notifier), [HipChat](#hipchat-notifier), [Slack](#slack-notifier), [Mattermost](#mattermost-notifier), [Teams](#teams-notifier), [IRC](#irc-notifier), [Amazon SNS](#amazon-sns-notifier), [Google Chat](#google-chat-notifier), [Datadog](#datadog-notifier) or via custom [WebHooks](#webhook-notifier).
 
 There's a great [Railscast about Exception Notification](http://railscasts.com/episodes/104-exception-notifications-revised) you can see that may help you getting started.
 
@@ -82,14 +82,18 @@ Options -> sections" below.
 
 ## Notifiers
 
-ExceptionNotification relies on notifiers to deliver notifications when errors occur in your applications. By default, 7 notifiers are available:
+ExceptionNotification relies on notifiers to deliver notifications when errors occur in your applications. By default, 8 notifiers are available:
 
 * [Campfire notifier](#campfire-notifier)
+* [Datadog notifier](#datadog-notifier)
 * [Email notifier](#email-notifier)
 * [HipChat notifier](#hipchat-notifier)
 * [IRC notifier](#irc-notifier)
 * [Slack notifier](#slack-notifier)
 * [Mattermost notifier](#mattermost-notifier)
+* [Teams notifier](#teams-notifier)
+* [Amazon SNS](#amazon-sns-notifier)
+* [Google Chat notifier](#google-chat-notifier)
 * [WebHook notifier](#webhook-notifier)
 
 But, you also can easily implement your own [custom notifier](#custom-notifier).
@@ -144,6 +148,59 @@ The API token to allow access to your Campfire account.
 
 
 For more options to set Campfire, like _ssl_, check [here](https://github.com/collectiveidea/tinder/blob/master/lib/tinder/campfire.rb#L17).
+
+### Datadog notifier
+
+This notifier sends error events to Datadog using the [Dogapi](https://github.com/DataDog/dogapi-rb) gem.
+
+#### Usage
+
+Just add the [Dogapi](https://github.com/DataDog/dogapi-rb) gem to your `Gemfile`:
+
+```ruby
+gem 'dogapi'
+```
+
+To use datadog notifier, you first need to create a `Dogapi::Client` with your datadog api and application keys, like this:
+
+```ruby
+cilent = Dogapi::Client.new(api_key, application_key)
+```
+
+You then need to set the `client` option, like this:
+
+```ruby
+Rails.application.config.middleware.use ExceptionNotification::Rack,
+  :email => {
+    :email_prefix => "[PREFIX] ",
+    :sender_address => %{"notifier" <notifier@example.com>},
+    :exception_recipients => %w{exceptions@example.com}
+  },
+  :datadog => {
+    :client => client
+  }
+```
+
+#### Options
+
+##### client
+
+*DogApi::Client, required*
+
+The API client to send events to Datadog.
+
+##### title_prefix
+
+*String, optional*
+
+Prefix for event title in Datadog.
+
+##### tags
+
+*Array of Strings, optional*
+
+Optional tags for events in Datadog.
+
 
 ### Email notifier
 
@@ -608,7 +665,7 @@ Contains additional payload for a message (e.g avatar, attachments, etc). See [s
 
 Contains additional fields that will be added to the attachement. See [Slack documentation](https://api.slack.com/docs/message-attachments).
 
-## Mattermost notifier
+### Mattermost notifier
 
 Post notification in a mattermost channel via [incoming webhook](http://docs.mattermost.com/developer/webhooks-incoming.html)
 
@@ -723,6 +780,128 @@ Url of your gitlab or github with your organisation name for issue creation link
 
 Your application name used for issue creation link. Defaults to ``` Rails.application.class.parent_name.underscore```.
 
+### Google Chat Notifier
+
+Post notifications in a Google Chats channel via [incoming webhook](https://developers.google.com/hangouts/chat/how-tos/webhooks)
+
+Add the [HTTParty](https://github.com/jnunemaker/httparty) gem to your `Gemfile`:
+
+```ruby
+gem 'httparty'
+```
+
+To configure it, you **need** to set the `webhook_url` option.
+
+```ruby
+Rails.application.config.middleware.use ExceptionNotification::Rack,
+  :google_chat => {
+    :webhook_url => 'https://chat.googleapis.com/v1/spaces/XXXXXXXX/messages?key=YYYYYYYYYYYYY&token=ZZZZZZZZZZZZ'
+  }
+```
+
+##### webhook_url
+
+*String, required*
+
+The Incoming WebHook URL on Google Chats.
+
+##### app_name
+
+*String, optional*
+
+Your application name, shown in the notification. Defaults to `Rails.application.class.parent_name.underscore`.
+
+### Amazon SNS Notifier
+
+Notify all exceptions Amazon - Simple Notification Service: [SNS](https://aws.amazon.com/sns/).
+
+#### Usage
+
+Add the [aws-sdk-sns](https://github.com/aws/aws-sdk-ruby/tree/master/gems/aws-sdk-sns) gem to your `Gemfile`:
+
+```ruby
+  gem 'aws-sdk-sns', '~> 1.5'
+```
+
+To configure it, you **need** to set 3 required options for aws: `region`, `access_key_id` and `secret_access_key`, and one more option for sns: `topic_arn`.
+
+```ruby
+Rails.application.config.middleware.use ExceptionNotification::Rack,
+  sns: {
+    region: 'us-east-x',
+    access_key_id: 'access_key_id',
+    secret_access_key: 'secret_access_key',
+    topic_arn: 'arn:aws:sns:us-east-x:XXXX:my-topic'
+  }
+```
+
+##### sns_prefix
+*String, optional *
+
+Prefix in the notification subject, by default: "[Error]"
+
+##### backtrace_lines
+*Integer, optional *
+
+Number of backtrace lines to be displayed in the notification message. By default: 10
+
+#### Note:
+* You may need to update your previous `aws-sdk-*` gems in order to setup `aws-sdk-sns` correctly.
+* If you need any further information about the available regions or any other SNS related topic consider: [SNS faqs](https://aws.amazon.com/sns/faqs/)
+
+### Teams notifier
+
+Post notification in a Microsoft Teams channel via [Incoming Webhook Connector](https://docs.microsoft.com/en-us/outlook/actionable-messages/actionable-messages-via-connectors)
+Just add the [HTTParty](https://github.com/jnunemaker/httparty) gem to your `Gemfile`:
+
+```ruby
+gem 'httparty'
+```
+
+To configure it, you **need** to set the `webhook_url` option.  
+If you are using GitLab for issue tracking, you can specify `git_url` as follows to add a *Create issue* button in your notification.  
+By default this will use your Rails application name to match the git repository. If yours differs, you can specify `app_name`.  
+By that same notion, you may also set a `jira_url` to get a button that will send you to the New Issue screen in Jira.
+
+```ruby
+Rails.application.config.middleware.use ExceptionNotification::Rack,
+  :email => {
+    :email_prefix => "[PREFIX] ",
+    :sender_address => %{"notifier" <notifier@example.com>},
+    :exception_recipients => %w{exceptions@example.com}
+  },
+  :teams => {
+    :webhook_url => 'https://outlook.office.com/webhook/your-guid/IncomingWebhook/team-guid',
+    :git_url => 'https://your-gitlab.com/Group/Project',
+    :jira_url => 'https://your-jira.com'
+  }
+```
+
+#### Options
+
+##### webhook_url
+
+*String, required*
+
+The Incoming WebHook URL on mattermost.
+
+##### git_url
+
+*String, optional*
+
+Url of your gitlab or github with your organisation name for issue creation link (Eg: `github.com/aschen`). Defaults to nil and doesn't add link to the notification.
+
+##### jira_url
+
+*String, optional*
+
+Url of your Jira instance, adds button for Create Issue screen. Defaults to nil and doesn't add a button to the card.
+
+##### app_name
+
+*String, optional*
+
+Your application name used for git issue creation link. Defaults to `Rails.application.class.parent_name.underscore`.
 
 ### WebHook notifier
 
